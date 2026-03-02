@@ -97,8 +97,8 @@ fun ChatScreen(
                 onResult = { result -> inputText = result },
                 onError = { err -> 
                     Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                    isRecording = false
-                }
+                },
+                onFinished = { isRecording = false }
             )
         } else {
             Toast.makeText(context, "需要麦克风权限才能使用语音输入", Toast.LENGTH_SHORT).show()
@@ -121,13 +121,20 @@ fun ChatScreen(
 
     fun sendMessage() {
         if (isSending || (inputText.isBlank() && selectedImageBitmap == null)) return
+        
+        // 发送前强制停止所有语音活动
+        if (isRecording) {
+            isRecording = false
+            voiceManager.stopListening()
+        }
+        voiceManager.stopSpeaking()
+
         val userText = inputText.trim()
         val imageBase64 = selectedImageBitmap?.let { ImageUtils.compressAndEncodeToBase64(it) }
         
         inputText = ""
         selectedImageBitmap = null
         isSending = true
-        voiceManager.stopSpeaking()
 
         if (messages.isEmpty()) { 
             onSessionUpdated(session.copy(title = if (userText.length > 10) userText.take(10) + "..." else "分析咨询")) 
@@ -202,7 +209,6 @@ fun ChatScreen(
                 .imePadding(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 语音输入按钮：点击切换开启/停止
             IconButton(
                 onClick = { 
                     if (!isRecording) {
@@ -214,8 +220,8 @@ fun ChatScreen(
                                 onResult = { result -> inputText = result },
                                 onError = { err -> 
                                     Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                                    isRecording = false
-                                }
+                                },
+                                onFinished = { isRecording = false }
                             )
                         }
                     } else {

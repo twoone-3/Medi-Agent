@@ -7,7 +7,6 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
-import android.util.Log
 import java.util.Locale
 
 class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
@@ -21,7 +20,6 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
     }
 
-    // --- TTS (Text To Speech) ---
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             val result = tts?.setLanguage(Locale.CHINESE)
@@ -42,7 +40,12 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
     }
 
     // --- STT (Speech To Text) ---
-    fun startListening(onResult: (String) -> Unit, onError: (String) -> Unit) {
+    // 增加 onFinished 回调，用于同步 UI 状态
+    fun startListening(
+        onResult: (String) -> Unit, 
+        onError: (String) -> Unit,
+        onFinished: () -> Unit
+    ) {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.CHINESE.toString())
@@ -55,15 +58,22 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
+            
             override fun onError(error: Int) {
+                // 错误 5 是 ERROR_CLIENT，通常可以忽略或温和提示
+                if (error == 5) {
+                    onFinished()
+                    return
+                }
                 val message = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "音频错误"
-                    SpeechRecognizer.ERROR_NETWORK -> "网络错误"
+                    SpeechRecognizer.ERROR_NETWORK -> "网络超时"
                     SpeechRecognizer.ERROR_NO_MATCH -> "没听清，请再说一遍"
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "说话超时"
-                    else -> "识别错误: $error"
+                    else -> "识别提醒($error)"
                 }
                 onError(message)
+                onFinished()
             }
 
             override fun onResults(results: Bundle?) {
@@ -71,6 +81,7 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
                 if (!matches.isNullOrEmpty()) {
                     onResult(matches[0])
                 }
+                onFinished()
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
