@@ -1,0 +1,47 @@
+# --- 编译输出 ---
+/build
+/*/build
+*.apk
+*.ap_
+*.dex
+*.class
+
+# --- IDE 配置文件 (Android Studio / IntelliJ) ---
+.idea/
+*.iml
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/compiler.xml
+.idea/libraries/
+.idea/caches/
+.idea/assetWizardSettings.xml
+.idea/navEditor.xml
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/vcs.xml
+.idea/jsLibraryMappings.xml
+.idea/codeStyles/
+.idea/shelf/
+
+# --- Gradle 相关 ---
+.gradle/
+/local.properties
+gradle.properties
+# 注意：如果你在 gradle.properties 存了私密 API Key，请务必将其加入 ignore 或使用 local.properties
+
+# --- 签名文件 (千万不能传！) ---
+*.jks
+*.keystore
+*.p12
+*.key
+/release/
+
+# --- 操作系统相关 ---
+.DS_Store
+Thumbs.db
+
+# --- 采集与缓存 ---
+/captures
+.externalNativeBuild
+.cxx/
+*.log
