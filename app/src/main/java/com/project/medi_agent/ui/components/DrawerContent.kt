@@ -16,13 +16,19 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +46,33 @@ fun AppDrawer(
     onNewChatClick: () -> Unit,
     onDeleteSession: (ChatSession) -> Unit
 ) {
+    // 状态：当前正准备删除的会话
+    var sessionToDelete by remember { mutableStateOf<ChatSession?>(null) }
+
+    // 删除确认弹窗
+    sessionToDelete?.let { session ->
+        AlertDialog(
+            onDismissRequest = { sessionToDelete = null },
+            title = { Text("确认删除") },
+            text = { Text("确定要删除对话 \"${session.title}\" 吗？此操作不可撤销。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteSession(session)
+                        sessionToDelete = null
+                    }
+                ) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { sessionToDelete = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)) {
         // App Title
         Box(modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 16.dp)) {
@@ -81,7 +114,7 @@ fun AppDrawer(
                                 overflow = TextOverflow.Ellipsis
                             )
                             IconButton(
-                                onClick = { onDeleteSession(session) },
+                                onClick = { sessionToDelete = session }, // 改为触发弹窗
                                 modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(

@@ -30,7 +30,7 @@ private val LightColorScheme = lightColorScheme(
 fun MediAgentTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
-    isSeniorMode: Boolean = false, // 增加长辈模式状态
+    isSeniorMode: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -42,17 +42,18 @@ fun MediAgentTheme(
         else -> LightColorScheme
     }
 
-    // 根据长辈模式动态调整字体排版
     val typography = if (isSeniorMode) {
         Typography(
             bodyLarge = TextStyle(fontSize = 22.sp, lineHeight = 30.sp),
             bodyMedium = TextStyle(fontSize = 20.sp, lineHeight = 28.sp),
             titleLarge = TextStyle(fontSize = 26.sp, lineHeight = 32.sp),
+            titleMedium = TextStyle(fontSize = 24.sp, lineHeight = 30.sp),
+            titleSmall = TextStyle(fontSize = 20.sp, lineHeight = 26.sp),
             labelLarge = TextStyle(fontSize = 18.sp),
             labelMedium = TextStyle(fontSize = 16.sp)
         )
     } else {
-        Typography // 使用默认配置
+        Typography()
     }
 
     MaterialTheme(

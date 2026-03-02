@@ -6,11 +6,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,10 +34,16 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(prefs.getBoolean("senior_mode", false)) 
             }
             
+            // 0: System, 1: Light, 2: Dark
+            var themeMode by remember { 
+                mutableIntStateOf(prefs.getInt("theme_mode", 0)) 
+            }
+            
             DisposableEffect(prefs) {
                 val listener = SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
-                    if (key == "senior_mode") {
-                        seniorMode = p.getBoolean(key, false)
+                    when (key) {
+                        "senior_mode" -> seniorMode = p.getBoolean(key, false)
+                        "theme_mode" -> themeMode = p.getInt(key, 0)
                     }
                 }
                 prefs.registerOnSharedPreferenceChangeListener(listener)
@@ -44,7 +52,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            MediAgentTheme(isSeniorMode = seniorMode) {
+            val isDarkTheme = when (themeMode) {
+                1 -> false
+                2 -> true
+                else -> isSystemInDarkTheme()
+            }
+
+            MediAgentTheme(darkTheme = isDarkTheme, isSeniorMode = seniorMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
