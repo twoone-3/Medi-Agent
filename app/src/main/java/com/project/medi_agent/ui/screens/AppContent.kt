@@ -13,45 +13,30 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import com.project.medi_agent.data.HistoryManager
-import com.project.medi_agent.ui.ChatSession
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.project.medi_agent.ui.MainViewModel
 import com.project.medi_agent.ui.Screen
 import com.project.medi_agent.ui.components.AppDrawer
 import kotlinx.coroutines.launch
 
 @Composable
 fun AppContent(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val historyManager = remember { HistoryManager(context) }
+    // 确保使用的是 androidx.lifecycle.viewmodel.compose.viewModel
+    val viewModel: MainViewModel = viewModel()
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     var currentScreen by remember { mutableStateOf(Screen.Chat) }
-    
-    val sessions = remember { 
-        mutableStateListOf<ChatSession>().apply {
-            val loaded = historyManager.loadSessions()
-            if (loaded.isEmpty()) {
-                add(ChatSession())
-            } else {
-                addAll(loaded)
-            }
-        }
-    }
-    
-    var currentSessionId by remember { 
-        mutableStateOf(sessions.firstOrNull()?.id ?: "") 
-    }
 
-    val currentSession = sessions.find { it.id == currentSessionId } ?: sessions.first()
+    val sessions by viewModel.sessions.collectAsState()
+    val currentSession by viewModel.currentSession.collectAsState()
 
     BackHandler(enabled = drawerState.isOpen) {
         scope.launch { drawerState.close() }
@@ -67,64 +52,47 @@ fun AppContent(modifier: Modifier = Modifier) {
             ModalDrawerSheet {
                 AppDrawer(
                     selected = currentScreen,
-                    currentSessionId = currentSessionId,
+                    currentSessionId = currentSession?.id,
                     sessions = sessions,
                     onDestinationClick = { dest ->
                         currentScreen = dest
                         scope.launch { drawerState.close() }
                     },
                     onSessionClick = { session ->
-                        currentSessionId = session.id
+                        viewModel.selectSession(session)
                         currentScreen = Screen.Chat
                         scope.launch { drawerState.close() }
                     },
                     onNewChatClick = {
-                        val newSession = ChatSession()
-                        sessions.add(0, newSession)
-                        historyManager.saveSessions(sessions)
-                        currentSessionId = newSession.id
+                        viewModel.createNewSession()
                         currentScreen = Screen.Chat
                         scope.launch { drawerState.close() }
                     },
                     onDeleteSession = { sessionToDelete ->
-                        if (sessions.size > 1) {
-                            val index = sessions.indexOfFirst { it.id == sessionToDelete.id }
-                            sessions.removeAt(index)
-                            historyManager.deleteSession(sessionToDelete.id)
-                            historyManager.saveSessions(sessions)
-                            if (currentSessionId == sessionToDelete.id) {
-                                currentSessionId = sessions.first().id
-                            }
-                        }
+                        viewModel.deleteSession(sessionToDelete)
                     }
                 )
             }
         }
     ) {
-        // 使用 AnimatedContent 增加页面切换的平滑动画
         AnimatedContent(
             targetState = currentScreen,
             transitionSpec = {
-                // 定义渐入渐出动画，时长 300ms
-                fadeIn(animationSpec = tween(300))
-                    .togetherWith(fadeOut(animationSpec = tween(300)))
+                fadeIn(animationSpec = tween(300)).togetherWith(fadeOut(animationSpec = tween(300)))
             },
             label = "ScreenTransition"
         ) { targetScreen ->
             Box(modifier = modifier.fillMaxSize()) {
                 when (targetScreen) {
-                    Screen.Chat -> ChatScreen(
-                        modifier = Modifier.fillMaxSize(),
-                        session = currentSession,
-                        onSessionUpdated = { updated ->
-                            val idx = sessions.indexOfFirst { it.id == updated.id }
-                            if (idx != -1) {
-                                sessions[idx] = updated
-                                historyManager.saveSessions(sessions)
-                            }
-                        },
-                        openDrawer = { scope.launch { drawerState.open() } }
-                    )
+                    Screen.Chat -> {
+                        if (currentSession != null) {
+                            ChatScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                session = currentSession!!,
+                                openDrawer = { scope.launch { drawerState.open() } }
+                            )
+                        }
+                    }
                     Screen.Settings -> SettingsScreen(
                         onMenuClick = { scope.launch { drawerState.open() } }
                     )

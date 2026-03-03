@@ -1,6 +1,7 @@
 package com.project.medi_agent.ui.screens
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -13,7 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,20 +35,16 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.project.medi_agent.data.HistoryManager
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.project.medi_agent.data.VoiceManager
-import com.project.medi_agent.data.network.ApiRepository
-import com.project.medi_agent.data.network.ChatStreamChunk
 import com.project.medi_agent.data.network.ImageUtils
-import com.project.medi_agent.ui.ChatMessage
 import com.project.medi_agent.ui.ChatSession
+import com.project.medi_agent.ui.MainViewModel
 import com.project.medi_agent.ui.components.AppTopBar
 import com.project.medi_agent.ui.components.ChatBubble
-import kotlinx.coroutines.launch
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,25 +52,20 @@ import java.io.File
 fun ChatScreen(
     modifier: Modifier = Modifier,
     session: ChatSession,
-    onSessionUpdated: (ChatSession) -> Unit,
-    openDrawer: (() -> Unit)? = null
+    openDrawer: (() -> Unit)? = null,
+    viewModel: MainViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val historyManager = remember { HistoryManager(context) }
-    val apiRepository = remember { ApiRepository(context) }
     val voiceManager = remember { VoiceManager(context) }
-    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    
-    val messages = remember(session.id) { 
-        mutableStateListOf<ChatMessage>().apply { addAll(historyManager.loadHistory(session.id)) }
-    }
-    
+
+    val messages by viewModel.messages.collectAsState()
+    val isSending by viewModel.isSending.collectAsState()
+
     var inputText by remember { mutableStateOf("") }
-    var isSending by remember { mutableStateOf(false) }
     var isRecording by remember { mutableStateOf(false) }
-    var showSheet by remember { mutableStateOf(false) } 
-    
+    var showSheet by remember { mutableStateOf(false) }
+
     var selectedImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -83,11 +75,13 @@ fun ChatScreen(
 
     // --- Launchers ---
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) { cameraImageUri?.let { uri -> 
-            val inputStream = context.contentResolver.openInputStream(uri)
-            selectedImageBitmap = BitmapFactory.decodeStream(inputStream)
-            showSheet = false
-        } }
+        if (success) {
+            cameraImageUri?.let {
+                val inputStream = context.contentResolver.openInputStream(it)
+                selectedImageBitmap = BitmapFactory.decodeStream(inputStream)
+                showSheet = false
+            }
+        }
     }
 
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -95,9 +89,7 @@ fun ChatScreen(
             isRecording = true
             voiceManager.startListening(
                 onResult = { result -> inputText = result },
-                onError = { err -> 
-                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                },
+                onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() },
                 onFinished = { isRecording = false }
             )
         } else {
@@ -110,74 +102,15 @@ fun ChatScreen(
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { 
+        uri?.let {
             val inputStream = context.contentResolver.openInputStream(it)
             selectedImageBitmap = BitmapFactory.decodeStream(inputStream)
             showSheet = false
         }
     }
 
-    LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1) }
-
-    fun sendMessage() {
-        if (isSending || (inputText.isBlank() && selectedImageBitmap == null)) return
-        
-        // 发送前强制停止所有语音活动
-        if (isRecording) {
-            isRecording = false
-            voiceManager.stopListening()
-        }
-        voiceManager.stopSpeaking()
-
-        val userText = inputText.trim()
-        val imageBase64 = selectedImageBitmap?.let { ImageUtils.compressAndEncodeToBase64(it) }
-        
-        inputText = ""
-        selectedImageBitmap = null
-        isSending = true
-
-        if (messages.isEmpty()) { 
-            onSessionUpdated(session.copy(title = if (userText.length > 10) userText.take(10) + "..." else "分析咨询")) 
-        }
-        
-        val userMsgId = (messages.maxOfOrNull { it.id } ?: 0) + 1
-        messages.add(ChatMessage(userMsgId, userText, isUser = true, imageBase64 = imageBase64))
-        
-        val aiMsgId = userMsgId + 1
-        var currentAiMsg = ChatMessage(aiMsgId, "", isUser = false)
-        messages.add(currentAiMsg)
-        
-        scope.launch {
-            try {
-                var fullResponse = ""
-                apiRepository.chatStream(messages.toList()).collect { chunk ->
-                    val index = messages.indexOfFirst { it.id == aiMsgId }
-                    if (index != -1) {
-                        when (chunk) {
-                            is ChatStreamChunk.Thinking -> {
-                                currentAiMsg = currentAiMsg.copy(thinkingText = currentAiMsg.thinkingText + chunk.text)
-                                messages[index] = currentAiMsg
-                            }
-                            is ChatStreamChunk.Content -> {
-                                fullResponse += chunk.text
-                                currentAiMsg = currentAiMsg.copy(text = currentAiMsg.text + chunk.text)
-                                messages[index] = currentAiMsg
-                            }
-                            is ChatStreamChunk.Error -> messages[index] = currentAiMsg.copy(text = chunk.message)
-                        }
-                    }
-                }
-                if (fullResponse.isNotBlank()) {
-                    voiceManager.speak(fullResponse)
-                }
-            } catch (e: Exception) {
-                val index = messages.indexOfFirst { it.id == aiMsgId }
-                if (index != -1) messages[index] = currentAiMsg.copy(text = "连接中断: ${e.localizedMessage}")
-            } finally {
-                isSending = false
-                historyManager.saveHistory(session.id, messages)
-            }
-        }
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -188,7 +121,7 @@ fun ChatScreen(
             state = listState,
             contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp)
         ) {
-            itemsIndexed(items = messages) { _, msg -> ChatBubble(msg) }
+            items(messages) { msg -> ChatBubble(msg) }
         }
 
         if (selectedImageBitmap != null) {
@@ -203,14 +136,11 @@ fun ChatScreen(
         HorizontalDivider()
 
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .imePadding(),
+            modifier = Modifier.fillMaxWidth().padding(8.dp).imePadding(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = { 
+                onClick = {
                     if (!isRecording) {
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                             recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -218,9 +148,7 @@ fun ChatScreen(
                             isRecording = true
                             voiceManager.startListening(
                                 onResult = { result -> inputText = result },
-                                onError = { err -> 
-                                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                                },
+                                onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() },
                                 onFinished = { isRecording = false }
                             )
                         }
@@ -228,11 +156,11 @@ fun ChatScreen(
                         isRecording = false
                         voiceManager.stopListening()
                     }
-                }, 
+                },
                 enabled = !isSending
             ) {
                 Icon(
-                    imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic, 
+                    imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
                     contentDescription = "Voice Input",
                     tint = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                 )
@@ -242,12 +170,7 @@ fun ChatScreen(
                 modifier = Modifier.weight(1f),
                 value = inputText,
                 onValueChange = { inputText = it },
-                placeholder = { 
-                    Text(
-                        text = if (isRecording) "正在听您说话..." else "输入消息...", 
-                        style = MaterialTheme.typography.bodyMedium
-                    ) 
-                },
+                placeholder = { Text(if (isRecording) "正在听您说话..." else "输入消息...", style = MaterialTheme.typography.bodyMedium) },
                 maxLines = 4,
                 enabled = !isSending,
                 shape = RoundedCornerShape(28.dp),
@@ -262,7 +185,11 @@ fun ChatScreen(
 
             if (inputText.isNotBlank() || selectedImageBitmap != null) {
                 IconButton(
-                    onClick = { sendMessage() },
+                    onClick = {
+                        viewModel.sendMessage(inputText, selectedImageBitmap?.let { ImageUtils.compressAndEncodeToBase64(it) })
+                        inputText = ""
+                        selectedImageBitmap = null
+                    },
                     modifier = Modifier.size(48.dp)
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -318,7 +245,7 @@ fun AttachmentItem(icon: ImageVector, label: String, onClick: () -> Unit) {
     }
 }
 
-private fun startCamera(context: android.content.Context, onUriReady: (Uri) -> Unit, onLaunch: (Uri) -> Unit) {
+private fun startCamera(context: Context, onUriReady: (Uri) -> Unit, onLaunch: (Uri) -> Unit) {
     val directory = File(context.cacheDir, "images")
     directory.mkdirs()
     val file = File(directory, "img_${System.currentTimeMillis()}.jpg")
