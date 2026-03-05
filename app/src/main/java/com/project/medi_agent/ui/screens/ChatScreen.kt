@@ -69,11 +69,26 @@ fun ChatScreen(
     var selectedImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
 
+    // --- 核心：追踪当前正在播报的消息 ID ---
+    var playingMessageId by remember { mutableLongStateOf(-1L) }
+
+    // 监听自动 TTS 事件 (AI 回复结束时触发)
+    LaunchedEffect(Unit) {
+        viewModel.ttsEvent.collect { text ->
+            // 这里我们没法直接拿到 AI 消息 ID，但我们可以标记最新的那条
+            val lastAiMsg = messages.lastOrNull { !it.isUser }
+            playingMessageId = lastAiMsg?.messageId ?: -1L
+            
+            val cleanText = text.replace(Regex("\\[ACTION:.*?\\]"), "")
+            voiceManager.speak(cleanText, onComplete = { playingMessageId = -1L })
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose { voiceManager.destroy() }
     }
 
-    // --- Launchers ---
+    // --- Launchers 略 ---
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success) {
             cameraImageUri?.let {
@@ -92,8 +107,6 @@ fun ChatScreen(
                 onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() },
                 onFinished = { isRecording = false }
             )
-        } else {
-            Toast.makeText(context, "需要麦克风权限才能使用语音输入", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -121,7 +134,24 @@ fun ChatScreen(
             state = listState,
             contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp)
         ) {
-            items(messages) { msg -> ChatBubble(msg) }
+            items(messages) { msg -> 
+                ChatBubble(
+                    message = msg,
+                    // 状态同步：判断当前消息是否正在播放
+                    isPlaying = playingMessageId == msg.messageId,
+                    onPlayAudio = { text -> 
+                        // 点击播放：设置 ID，启动播报
+                        playingMessageId = msg.messageId
+                        val cleanText = text.replace(Regex("\\[ACTION:.*?\\]"), "")
+                        voiceManager.speak(cleanText, onComplete = { playingMessageId = -1L }) 
+                    },
+                    onStopAudio = { 
+                        // 手动停止：重置 ID，停止引擎
+                        voiceManager.stopSpeaking() 
+                        playingMessageId = -1L
+                    }
+                )
+            }
         }
 
         if (selectedImageBitmap != null) {
@@ -186,6 +216,9 @@ fun ChatScreen(
             if (inputText.isNotBlank() || selectedImageBitmap != null) {
                 IconButton(
                     onClick = {
+                        // 逻辑：发送新消息时停止一切旧播报
+                        voiceManager.stopSpeaking()
+                        playingMessageId = -1L
                         viewModel.sendMessage(inputText, selectedImageBitmap?.let { ImageUtils.compressAndEncodeToBase64(it) })
                         inputText = ""
                         selectedImageBitmap = null

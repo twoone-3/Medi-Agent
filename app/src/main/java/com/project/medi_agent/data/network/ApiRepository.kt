@@ -58,7 +58,7 @@ class ApiRepository(private val context: Context) {
         
         validMessages.forEach { msg ->
             val role = if (msg.isUser) "user" else "assistant"
-            
+
             val content: Any = if (msg.imageBase64 != null) {
                 if (isCurrentTurnVision) {
                     // 场景 A：当前是视觉模式 -> 发送完整多模态结构

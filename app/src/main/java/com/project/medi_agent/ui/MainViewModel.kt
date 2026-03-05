@@ -42,6 +42,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
 
+    // 5. TTS 播报事件流
+    private val _ttsEvent = MutableSharedFlow<String>()
+    val ttsEvent = _ttsEvent.asSharedFlow()
+
     fun selectSession(session: ChatSession) {
         _currentSessionId.value = session.id
     }
@@ -83,14 +87,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val history = messages.value
                 var currentAiMsg = aiMsgPlaceholder.copy(messageId = aiMsgId)
+                var fullResponseForTTS = ""
 
                 apiRepository.chatStream(history).collect { chunk ->
-                    when (chunk) {
-                        is ChatStreamChunk.Thinking -> currentAiMsg = currentAiMsg.copy(thinkingText = currentAiMsg.thinkingText + chunk.text)
-                        is ChatStreamChunk.Content -> currentAiMsg = currentAiMsg.copy(text = currentAiMsg.text + chunk.text)
-                        is ChatStreamChunk.Error -> currentAiMsg = currentAiMsg.copy(text = "系统故障: ${chunk.message}")
+                    currentAiMsg = when (chunk) {
+                        is ChatStreamChunk.Thinking -> currentAiMsg.copy(thinkingText = currentAiMsg.thinkingText + chunk.text)
+                        is ChatStreamChunk.Content -> {
+                            fullResponseForTTS += chunk.text
+                            currentAiMsg.copy(text = currentAiMsg.text + chunk.text)
+                        }
+                        is ChatStreamChunk.Error -> currentAiMsg.copy(text = "系统故障: ${chunk.message}")
                     }
                     chatMessageDao.insertMessage(currentAiMsg)
+                }
+                
+                // --- 触发 TTS 播报 ---
+                if (fullResponseForTTS.isNotBlank()) {
+                    _ttsEvent.emit(fullResponseForTTS)
                 }
                 
                 if (session.title == "新对话" || session.title == "分析咨询") {
