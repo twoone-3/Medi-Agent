@@ -78,8 +78,8 @@ fun ChatScreen(
             // 这里我们没法直接拿到 AI 消息 ID，但我们可以标记最新的那条
             val lastAiMsg = messages.lastOrNull { !it.isUser }
             playingMessageId = lastAiMsg?.messageId ?: -1L
-            
-            val cleanText = text.replace(Regex("\\[ACTION:.*?\\]"), "")
+
+            val cleanText = text.replace(Regex("\\[ACTION:.*?]"), "")
             voiceManager.speak(cleanText, onComplete = { playingMessageId = -1L })
         }
     }
@@ -89,38 +89,45 @@ fun ChatScreen(
     }
 
     // --- Launchers 略 ---
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) {
-            cameraImageUri?.let {
+    val cameraLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+            if (success) {
+                cameraImageUri?.let {
+                    val inputStream = context.contentResolver.openInputStream(it)
+                    selectedImageBitmap = BitmapFactory.decodeStream(inputStream)
+                    showSheet = false
+                }
+            }
+        }
+
+    val recordAudioPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (isGranted) {
+                isRecording = true
+                voiceManager.startListening(
+                    onResult = { result -> inputText = result },
+                    onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() },
+                    onFinished = { isRecording = false }
+                )
+            }
+        }
+
+    val cameraPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (isGranted) startCamera(
+                context,
+                { uri -> cameraImageUri = uri },
+                { uri -> cameraLauncher.launch(uri) })
+        }
+
+    val galleryLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let {
                 val inputStream = context.contentResolver.openInputStream(it)
                 selectedImageBitmap = BitmapFactory.decodeStream(inputStream)
                 showSheet = false
             }
         }
-    }
-
-    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-        if (isGranted) {
-            isRecording = true
-            voiceManager.startListening(
-                onResult = { result -> inputText = result },
-                onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() },
-                onFinished = { isRecording = false }
-            )
-        }
-    }
-
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-        if (isGranted) startCamera(context, { uri -> cameraImageUri = uri }, { uri -> cameraLauncher.launch(uri) })
-    }
-
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            val inputStream = context.contentResolver.openInputStream(it)
-            selectedImageBitmap = BitmapFactory.decodeStream(inputStream)
-            showSheet = false
-        }
-    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
@@ -130,24 +137,27 @@ fun ChatScreen(
         AppTopBar(title = session.title, onMenuClick = { openDrawer?.invoke() })
 
         LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.background),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background),
             state = listState,
             contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp)
         ) {
-            items(messages) { msg -> 
+            items(messages) { msg ->
                 ChatBubble(
                     message = msg,
                     // 状态同步：判断当前消息是否正在播放
                     isPlaying = playingMessageId == msg.messageId,
-                    onPlayAudio = { text -> 
+                    onPlayAudio = { text ->
                         // 点击播放：设置 ID，启动播报
                         playingMessageId = msg.messageId
-                        val cleanText = text.replace(Regex("\\[ACTION:.*?\\]"), "")
-                        voiceManager.speak(cleanText, onComplete = { playingMessageId = -1L }) 
+                        val cleanText = text.replace(Regex("\\[ACTION:.*?]"), "")
+                        voiceManager.speak(cleanText, onComplete = { playingMessageId = -1L })
                     },
-                    onStopAudio = { 
+                    onStopAudio = {
                         // 手动停止：重置 ID，停止引擎
-                        voiceManager.stopSpeaking() 
+                        voiceManager.stopSpeaking()
                         playingMessageId = -1L
                     }
                 )
@@ -155,10 +165,32 @@ fun ChatScreen(
         }
 
         if (selectedImageBitmap != null) {
-            Box(modifier = Modifier.padding(8.dp).size(100.dp)) {
-                Image(bitmap = selectedImageBitmap!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
-                IconButton(onClick = { selectedImageBitmap = null }, modifier = Modifier.align(Alignment.TopEnd).size(24.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), RoundedCornerShape(12.dp))) {
-                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+            Box(modifier = Modifier
+                .padding(8.dp)
+                .size(100.dp)) {
+                Image(
+                    bitmap = selectedImageBitmap!!.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                IconButton(
+                    onClick = { selectedImageBitmap = null },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(24.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                            RoundedCornerShape(12.dp)
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }
@@ -166,19 +198,28 @@ fun ChatScreen(
         HorizontalDivider()
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp).imePadding(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+                .imePadding(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = {
                     if (!isRecording) {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        if (ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.RECORD_AUDIO
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
                             recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         } else {
                             isRecording = true
                             voiceManager.startListening(
                                 onResult = { result -> inputText = result },
-                                onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() },
+                                onError = { err ->
+                                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                },
                                 onFinished = { isRecording = false }
                             )
                         }
@@ -200,7 +241,12 @@ fun ChatScreen(
                 modifier = Modifier.weight(1f),
                 value = inputText,
                 onValueChange = { inputText = it },
-                placeholder = { Text(if (isRecording) "正在听您说话..." else "输入消息...", style = MaterialTheme.typography.bodyMedium) },
+                placeholder = {
+                    Text(
+                        if (isRecording) "正在听您说话..." else "输入消息...",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
                 maxLines = 4,
                 enabled = !isSending,
                 shape = RoundedCornerShape(28.dp),
@@ -219,13 +265,19 @@ fun ChatScreen(
                         // 逻辑：发送新消息时停止一切旧播报
                         voiceManager.stopSpeaking()
                         playingMessageId = -1L
-                        viewModel.sendMessage(inputText, selectedImageBitmap?.let { ImageUtils.compressAndEncodeToBase64(it) })
+                        viewModel.sendMessage(
+                            inputText,
+                            selectedImageBitmap?.let { ImageUtils.compressAndEncodeToBase64(it) })
                         inputText = ""
                         selectedImageBitmap = null
                     },
                     modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             } else {
                 IconButton(onClick = { showSheet = true }, enabled = !isSending) {
@@ -242,13 +294,24 @@ fun ChatScreen(
             sheetState = rememberModalBottomSheetState()
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 48.dp, top = 16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 48.dp, top = 16.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 AttachmentItem(Icons.Default.PhotoCamera, "拍照") {
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                        startCamera(context, { uri -> cameraImageUri = uri }, { uri -> cameraLauncher.launch(uri) })
-                    } else { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) }
+                    if (ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.CAMERA
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        startCamera(
+                            context,
+                            { uri -> cameraImageUri = uri },
+                            { uri -> cameraLauncher.launch(uri) })
+                    } else {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
                 }
                 AttachmentItem(Icons.Default.Image, "相册") {
                     galleryLauncher.launch("image/*")
@@ -262,7 +325,9 @@ fun ChatScreen(
 fun AttachmentItem(icon: ImageVector, label: String, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }.padding(16.dp)
+        modifier = Modifier
+            .clickable { onClick() }
+            .padding(16.dp)
     ) {
         Surface(
             shape = CircleShape,

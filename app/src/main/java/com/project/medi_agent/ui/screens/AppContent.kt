@@ -28,7 +28,6 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun AppContent(modifier: Modifier = Modifier) {
-    // 确保使用的是 androidx.lifecycle.viewmodel.compose.viewModel
     val viewModel: MainViewModel = viewModel()
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -37,6 +36,7 @@ fun AppContent(modifier: Modifier = Modifier) {
 
     val sessions by viewModel.sessions.collectAsState()
     val currentSession by viewModel.currentSession.collectAsState()
+    val reminders by viewModel.reminders.collectAsState() // 获取提醒
 
     BackHandler(enabled = drawerState.isOpen) {
         scope.launch { drawerState.close() }
@@ -54,6 +54,7 @@ fun AppContent(modifier: Modifier = Modifier) {
                     selected = currentScreen,
                     currentSessionId = currentSession?.id,
                     sessions = sessions,
+                    reminders = reminders, // 传入提醒列表
                     onDestinationClick = { dest ->
                         currentScreen = dest
                         scope.launch { drawerState.close() }
@@ -70,6 +71,9 @@ fun AppContent(modifier: Modifier = Modifier) {
                     },
                     onDeleteSession = { sessionToDelete ->
                         viewModel.deleteSession(sessionToDelete)
+                    },
+                    onDeleteReminder = { reminder ->
+                        viewModel.deleteReminder(reminder)
                     }
                 )
             }

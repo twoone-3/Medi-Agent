@@ -20,23 +20,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun AppTopBar(title: String, modifier: Modifier = Modifier, onMenuClick: () -> Unit) {
-    // 使用 Surface 模拟标准 TopAppBar 的背景和海拔（阴影）
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 3.dp 
     ) {
         Column {
-            // 自动占据状态栏高度的占位符，防止内容被刘海屏或状态栏遮挡
             Spacer(Modifier.height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding()))
             
             Row(
                 modifier = Modifier
-                    .height(64.dp) // Material 3 标准高度
+                    .height(64.dp)
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -54,7 +53,9 @@ fun AppTopBar(title: String, modifier: Modifier = Modifier, onMenuClick: () -> U
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

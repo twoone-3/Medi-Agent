@@ -78,18 +78,19 @@ fun ChatBubble(
                     shape = RoundedCornerShape(if (isSeniorMode) 12.dp else 8.dp),
                     modifier = Modifier.padding(bottom = 4.dp).clickable { expanded = !expanded }
                 ) {
-                    Column(modifier = Modifier.padding(if (isSeniorMode) 12.dp else 8.dp)) {
+                    Column(modifier = Modifier.padding(if (isSeniorMode) 8.dp else 6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                 contentDescription = null,
-                                modifier = Modifier.size(if (isSeniorMode) 20.dp else 16.dp),
+                                modifier = Modifier.size(if (isSeniorMode) 12.dp else 10.dp),
                                 tint = MaterialTheme.colorScheme.outline
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 "思考过程", 
-                                style = if (isSeniorMode) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelMedium, 
+                                style = MaterialTheme.typography.labelSmall, 
+                                fontSize = if (isSeniorMode) 11.sp else 9.sp, // 极其缩小的字号
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
@@ -97,7 +98,8 @@ fun ChatBubble(
                             MarkdownText(
                                 content = message.thinkingText,
                                 color = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.padding(top = 4.dp)
+                                modifier = Modifier.padding(top = 4.dp),
+                                isThinking = true
                             )
                         }
                     }
@@ -134,7 +136,6 @@ fun ChatBubble(
                                 color = textColor
                             )
                         } else {
-                            // 修复点：移除非法的 style 参数
                             MarkdownText(
                                 content = message.text, 
                                 color = textColor
