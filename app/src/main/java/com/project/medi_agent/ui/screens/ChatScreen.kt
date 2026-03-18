@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -69,16 +70,17 @@ fun ChatScreen(
     var selectedImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
 
+    // 判断是否为长辈模式
+    val isSeniorMode = MaterialTheme.typography.bodyLarge.fontSize > 20.sp
+
     // --- 核心：追踪当前正在播报的消息 ID ---
     var playingMessageId by remember { mutableLongStateOf(-1L) }
 
     // 监听自动 TTS 事件 (AI 回复结束时触发)
     LaunchedEffect(Unit) {
         viewModel.ttsEvent.collect { text ->
-            // 这里我们没法直接拿到 AI 消息 ID，但我们可以标记最新的那条
             val lastAiMsg = messages.lastOrNull { !it.isUser }
             playingMessageId = lastAiMsg?.messageId ?: -1L
-
             val cleanText = text.replace(Regex("\\[ACTION:.*?]"), "")
             voiceManager.speak(cleanText, onComplete = { playingMessageId = -1L })
         }
@@ -88,7 +90,6 @@ fun ChatScreen(
         onDispose { voiceManager.destroy() }
     }
 
-    // --- Launchers 略 ---
     val cameraLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
             if (success) {
@@ -147,16 +148,13 @@ fun ChatScreen(
             items(messages) { msg ->
                 ChatBubble(
                     message = msg,
-                    // 状态同步：判断当前消息是否正在播放
                     isPlaying = playingMessageId == msg.messageId,
                     onPlayAudio = { text ->
-                        // 点击播放：设置 ID，启动播报
                         playingMessageId = msg.messageId
                         val cleanText = text.replace(Regex("\\[ACTION:.*?]"), "")
                         voiceManager.speak(cleanText, onComplete = { playingMessageId = -1L })
                     },
                     onStopAudio = {
-                        // 手动停止：重置 ID，停止引擎
                         voiceManager.stopSpeaking()
                         playingMessageId = -1L
                     }
@@ -167,7 +165,7 @@ fun ChatScreen(
         if (selectedImageBitmap != null) {
             Box(modifier = Modifier
                 .padding(8.dp)
-                .size(100.dp)) {
+                .size(if (isSeniorMode) 150.dp else 100.dp)) {
                 Image(
                     bitmap = selectedImageBitmap!!.asImageBitmap(),
                     contentDescription = null,
@@ -180,16 +178,16 @@ fun ChatScreen(
                     onClick = { selectedImageBitmap = null },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .size(24.dp)
+                        .size(if (isSeniorMode) 36.dp else 24.dp)
                         .background(
                             MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                            RoundedCornerShape(12.dp)
+                            RoundedCornerShape(if (isSeniorMode) 18.dp else 12.dp)
                         )
                 ) {
                     Icon(
                         Icons.Default.Close,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(if (isSeniorMode) 24.dp else 16.dp)
                     )
                 }
             }
@@ -200,7 +198,7 @@ fun ChatScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp)
+                .padding(if (isSeniorMode) 12.dp else 8.dp)
                 .imePadding(),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -228,12 +226,14 @@ fun ChatScreen(
                         voiceManager.stopListening()
                     }
                 },
+                modifier = Modifier.size(if (isSeniorMode) 56.dp else 48.dp),
                 enabled = !isSending
             ) {
                 Icon(
                     imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
                     contentDescription = "Voice Input",
-                    tint = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                    tint = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(if (isSeniorMode) 36.dp else 24.dp)
                 )
             }
 
@@ -249,7 +249,7 @@ fun ChatScreen(
                 },
                 maxLines = 4,
                 enabled = !isSending,
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(if (isSeniorMode) 32.dp else 28.dp),
                 textStyle = MaterialTheme.typography.bodyLarge,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
@@ -257,12 +257,11 @@ fun ChatScreen(
                 )
             )
 
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(if (isSeniorMode) 8.dp else 4.dp))
 
             if (inputText.isNotBlank() || selectedImageBitmap != null) {
                 IconButton(
                     onClick = {
-                        // 逻辑：发送新消息时停止一切旧播报
                         voiceManager.stopSpeaking()
                         playingMessageId = -1L
                         viewModel.sendMessage(
@@ -271,17 +270,26 @@ fun ChatScreen(
                         inputText = ""
                         selectedImageBitmap = null
                     },
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(if (isSeniorMode) 56.dp else 48.dp)
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.Send,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(if (isSeniorMode) 36.dp else 24.dp)
                     )
                 }
             } else {
-                IconButton(onClick = { showSheet = true }, enabled = !isSending) {
-                    Icon(Icons.Default.Add, contentDescription = "More")
+                IconButton(
+                    onClick = { showSheet = true }, 
+                    modifier = Modifier.size(if (isSeniorMode) 56.dp else 48.dp),
+                    enabled = !isSending
+                ) {
+                    Icon(
+                        Icons.Default.Add, 
+                        contentDescription = "More",
+                        modifier = Modifier.size(if (isSeniorMode) 36.dp else 24.dp)
+                    )
                 }
             }
         }
@@ -296,10 +304,10 @@ fun ChatScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 48.dp, top = 16.dp),
+                    .padding(bottom = if (isSeniorMode) 64.dp else 48.dp, top = 16.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                AttachmentItem(Icons.Default.PhotoCamera, "拍照") {
+                AttachmentItem(Icons.Default.PhotoCamera, "拍照", isSeniorMode) {
                     if (ContextCompat.checkSelfPermission(
                             context,
                             Manifest.permission.CAMERA
@@ -313,7 +321,7 @@ fun ChatScreen(
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     }
                 }
-                AttachmentItem(Icons.Default.Image, "相册") {
+                AttachmentItem(Icons.Default.Image, "相册", isSeniorMode) {
                     galleryLauncher.launch("image/*")
                 }
             }
@@ -322,7 +330,7 @@ fun ChatScreen(
 }
 
 @Composable
-fun AttachmentItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+fun AttachmentItem(icon: ImageVector, label: String, isSeniorMode: Boolean, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -332,14 +340,14 @@ fun AttachmentItem(icon: ImageVector, label: String, onClick: () -> Unit) {
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.size(64.dp)
+            modifier = Modifier.size(if (isSeniorMode) 80.dp else 64.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp))
+                Icon(icon, contentDescription = null, modifier = Modifier.size(if (isSeniorMode) 40.dp else 32.dp))
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge)
+        Text(label, style = if (isSeniorMode) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge)
     }
 }
 

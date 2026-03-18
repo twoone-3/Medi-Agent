@@ -37,7 +37,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (session == null) flowOf(emptyList()) else chatMessageDao.getMessagesForSession(session.id)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    // 5. 【核心新增】：提醒列表
+    // 5. 提醒列表
     val reminders: StateFlow<List<MedicationReminder>> = db.medicationReminderDao().getAllReminders()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
@@ -70,6 +70,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteReminder(reminder: MedicationReminder) {
         viewModelScope.launch {
             db.medicationReminderDao().deleteReminder(reminder)
+        }
+    }
+
+    // --- 开发者工具：清除所有数据 ---
+    fun debugClearAllData() {
+        viewModelScope.launch {
+            db.clearAllTables()
+            _currentSessionId.value = null
+        }
+    }
+
+    // --- 开发者工具：注入测试提醒 ---
+    fun debugInjectTestReminder() {
+        viewModelScope.launch {
+            val testReminder = MedicationReminder(
+                medicineName = "测试维他命 (Debug)",
+                dosage = "1片",
+                time = "09:00"
+            )
+            db.medicationReminderDao().insertReminder(testReminder)
         }
     }
 
