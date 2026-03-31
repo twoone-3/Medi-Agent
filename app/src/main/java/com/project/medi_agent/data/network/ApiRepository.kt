@@ -27,11 +27,14 @@ class ApiRepository(private val context: Context) {
         你的核心能力：
         1. 解读医疗报告、分析药盒图片。
         2. 【主动行动】：你可以通过调用工具来帮用户设置用药提醒。
+        3. 【记忆与检索】：你可以通过工具查询用户的健康档案（如过敏史、既往病史），并在给出建议前参考这些信息。
         
         工作流程：
-        - 当用户提到需要提醒吃药、或者你分析出需要服药时，请直接调用 `add_medication_reminder` 工具。
-        - 语气要极度温情，称呼用户为“爷爷”或“奶奶”。
-        - 解释要通俗易懂，多用比喻。
+        - 如果用户询问某个药是否能吃，或者你准备给出用药建议，请务必先调用 `get_health_profile` 查询其禁忌史。
+        - 如果用户提到了自己的健康情况（如“我血糖高”或“我对海鲜过敏”），请调用 `update_health_profile` 记录下来。
+        - 当用户提到需要提醒吃药时，请调用 `add_medication_reminder` 工具。
+        
+        语气要求：极度温情，称呼用户为“爷爷”或“奶奶”，解释通俗易懂。
     """.trimIndent()
 
     private val tools = listOf(
@@ -41,12 +44,37 @@ class ApiRepository(private val context: Context) {
                 description = "为用户添加一个用药闹钟提醒",
                 parameters = ParametersDefinition(
                     properties = mapOf(
-                        "medicine_name" to PropertyDefinition("string", "药品名称，例如：感冒灵"),
-                        "dosage" to PropertyDefinition("string", "剂量，例如：一袋 或 2粒"),
-                        "time" to PropertyDefinition("string", "提醒时间，格式为 HH:mm，例如：08:30"),
-                        "instruction" to PropertyDefinition("string", "特别医嘱，例如：饭后服用")
+                        "medicine_name" to PropertyDefinition("string", "药品名称"),
+                        "dosage" to PropertyDefinition("string", "剂量"),
+                        "time" to PropertyDefinition("string", "提醒时间 (HH:mm)"),
+                        "instruction" to PropertyDefinition("string", "特别医嘱")
                     ),
                     required = listOf("medicine_name", "dosage", "time")
+                )
+            )
+        ),
+        ToolDefinition(
+            function = FunctionDefinition(
+                name = "get_health_profile",
+                description = "查询用户的健康档案（过敏史、既往病史等）",
+                parameters = ParametersDefinition(
+                    properties = mapOf(
+                        "key" to PropertyDefinition("string", "查询类别，可选值：'allergies'(过敏史), 'chronic_diseases'(慢性病), 'all'(全部)")
+                    ),
+                    required = listOf("key")
+                )
+            )
+        ),
+        ToolDefinition(
+            function = FunctionDefinition(
+                name = "update_health_profile",
+                description = "更新用户的健康档案信息",
+                parameters = ParametersDefinition(
+                    properties = mapOf(
+                        "key" to PropertyDefinition("string", "类别，如 'allergies' 或 'chronic_diseases'"),
+                        "content" to PropertyDefinition("string", "具体内容，如 '青霉素过敏' 或 '高血压'")
+                    ),
+                    required = listOf("key", "content")
                 )
             )
         )
@@ -61,7 +89,8 @@ class ApiRepository(private val context: Context) {
     }
 
     fun chatStream(
-        messages: List<com.project.medi_agent.ui.ChatMessage>
+        messages: List<com.project.medi_agent.ui.ChatMessage>,
+        toolOutputs: List<ChatMessageRequest> = emptyList() // 支持注入工具执行结果
     ): Flow<ChatStreamChunk> = flow {
         val service = getChatService() ?: run {
             emit(ChatStreamChunk.Error("错误: 请先在设置中配置 API Key"))
@@ -80,6 +109,7 @@ class ApiRepository(private val context: Context) {
         val requestMessages = mutableListOf<ChatMessageRequest>()
         requestMessages.add(ChatMessageRequest(role = "system", content = systemPrompt))
         
+        // 组装历史消息
         messages.forEach { msg ->
             val role = if (msg.isUser) "user" else "assistant"
             val content: Any? = if (msg.imageBase64 != null) {
@@ -92,12 +122,15 @@ class ApiRepository(private val context: Context) {
             } else msg.text
             requestMessages.add(ChatMessageRequest(role = role, content = content))
         }
+        
+        // 注入工具执行结果 (Observation)
+        requestMessages.addAll(toolOutputs)
 
         val request = ChatCompletionRequest(
             model = modelName,
             messages = requestMessages,
             stream = true,
-            tools = if (isCurrentTurnVision) null else tools, // 视觉模型有时不支持 tools
+            tools = if (isCurrentTurnVision) null else tools,
             toolChoice = "auto"
         )
 
@@ -126,15 +159,12 @@ class ApiRepository(private val context: Context) {
                         val choiceResponse = gson.fromJson(data, ChatCompletionResponse::class.java)
                         val delta = choiceResponse.choices.firstOrNull()?.delta ?: continue
 
-                        // 处理推理
                         val reasoning = delta.reasoningContent ?: delta.thought ?: ""
                         if (reasoning.isNotEmpty()) emit(ChatStreamChunk.Thinking(reasoning))
 
-                        // 处理内容
                         val content = delta.content ?: ""
                         if (content.isNotEmpty()) emit(ChatStreamChunk.Content(content))
 
-                        // 处理 Tool Calls (流式拼接)
                         delta.toolCalls?.forEach { toolDelta ->
                             val index = toolDelta.index
                             val buffer = toolCallBuffers.getOrPut(index) {
@@ -145,7 +175,6 @@ class ApiRepository(private val context: Context) {
                     } catch (e: Exception) {}
                 }
             }
-            // 发射拼接完成的 ToolCall
             toolCallBuffers.values.forEach { (id, name, args) ->
                 emit(ChatStreamChunk.ToolCall(id, name, args.toString()))
             }

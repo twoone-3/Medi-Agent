@@ -1,21 +1,13 @@
 package com.project.medi_agent.data
 
 import android.content.Context
-import androidx.room.Dao
-import androidx.room.Database
-import androidx.room.Delete
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
-import androidx.room.Room
-import androidx.room.RoomDatabase
+import androidx.room.*
 import com.project.medi_agent.ui.ChatMessage
 import com.project.medi_agent.ui.ChatSession
 import com.project.medi_agent.ui.MedicationLog
 import com.project.medi_agent.ui.MedicationReminder
+import com.project.medi_agent.ui.HealthProfile
 import kotlinx.coroutines.flow.Flow
-
-// --- DAOs (Data Access Objects) ---
 
 @Dao
 interface ChatSessionDao {
@@ -54,22 +46,37 @@ interface MedicationReminderDao {
 }
 
 @Dao
+interface HealthProfileDao {
+    @Query("SELECT * FROM health_profile")
+    suspend fun getAllProfiles(): List<HealthProfile>
+
+    @Query("SELECT * FROM health_profile WHERE `key` = :key")
+    suspend fun getProfileByKey(key: String): HealthProfile?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProfile(profile: HealthProfile)
+}
+
+@Dao
 interface MedicationLogDao {
     @Query("SELECT * FROM medication_logs ORDER BY takenTime DESC")
     fun getAllLogs(): Flow<List<MedicationLog>>
+
+    // 用于 Dashboard：查询最近 X 天的服药统计
+    @Query("SELECT * FROM medication_logs WHERE takenTime > :sinceTime ORDER BY takenTime ASC")
+    suspend fun getRecentLogs(sinceTime: Long): List<MedicationLog>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLog(log: MedicationLog)
 }
 
-// --- Database Class ---
-
-@Database(entities = [ChatSession::class, ChatMessage::class, MedicationReminder::class, MedicationLog::class], version = 1, exportSchema = false)
+@Database(entities = [ChatSession::class, ChatMessage::class, MedicationReminder::class, MedicationLog::class, HealthProfile::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatSessionDao(): ChatSessionDao
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun medicationReminderDao(): MedicationReminderDao
     abstract fun medicationLogDao(): MedicationLogDao
+    abstract fun healthProfileDao(): HealthProfileDao
 
     companion object {
         @Volatile
@@ -81,7 +88,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "mediagent_database"
-                ).build()
+                )
+                .fallbackToDestructiveMigration(true) // 显式传递参数修复 Deprecated 警告
+                .build()
                 INSTANCE = instance
                 instance
             }

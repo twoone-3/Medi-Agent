@@ -16,7 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
@@ -226,6 +226,18 @@ fun ModelConfigSubScreen(
 
             OutlinedButton(
                 onClick = {
+                    viewModel.debugShowFullscreenReminder()
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Icon(Icons.Default.NotificationsActive, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("预览全屏提醒界面")
+            }
+
+            OutlinedButton(
+                onClick = {
                     viewModel.debugInjectTestReminder()
                     Toast.makeText(context, "已注入测试提醒", Toast.LENGTH_SHORT).show()
                 },
@@ -234,20 +246,7 @@ fun ModelConfigSubScreen(
             ) {
                 Icon(Icons.Default.BugReport, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("注入测试提醒数据")
-            }
-
-            OutlinedButton(
-                onClick = {
-                    viewModel.debugClearAllData()
-                    Toast.makeText(context, "所有本地数据已清除", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-            ) {
-                Icon(Icons.Default.DeleteForever, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("清除所有本地数据")
+                Text("注入 1 分钟后闹钟数据")
             }
             
             Spacer(modifier = Modifier.height(48.dp))

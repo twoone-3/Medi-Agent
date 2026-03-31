@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -62,6 +64,7 @@ fun ChatScreen(
 
     val messages by viewModel.messages.collectAsState()
     val isSending by viewModel.isSending.collectAsState()
+    val pendingReminder by viewModel.pendingReminder.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     var isRecording by remember { mutableStateOf(false) }
@@ -70,7 +73,6 @@ fun ChatScreen(
     var selectedImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
 
-    // 判断是否为长辈模式
     val isSeniorMode = MaterialTheme.typography.bodyLarge.fontSize > 20.sp
 
     // --- 核心：追踪当前正在播报的消息 ID ---
@@ -90,6 +92,43 @@ fun ChatScreen(
         onDispose { voiceManager.destroy() }
     }
 
+    // --- 提醒确认弹窗 (人在回路) ---
+    pendingReminder?.let { reminder ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissPendingReminder() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Alarm, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("为您定个闹钟？", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column {
+                    Text("药名：${reminder.medicineName}", style = MaterialTheme.typography.bodyLarge)
+                    Text("时间：${reminder.time}", style = MaterialTheme.typography.bodyLarge)
+                    Text("剂量：${reminder.dosage}", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(8.dp))
+                    Text("确认后，我会准时提醒您吃药。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmReminder(reminder) },
+                    modifier = Modifier.height(if (isSeniorMode) 56.dp else 40.dp)
+                ) {
+                    Text("确认", fontSize = if (isSeniorMode) 20.sp else 16.sp)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissPendingReminder() }) {
+                    Text("不用了")
+                }
+            }
+        )
+    }
+
+    // --- Launchers 略 ---
     val cameraLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
             if (success) {

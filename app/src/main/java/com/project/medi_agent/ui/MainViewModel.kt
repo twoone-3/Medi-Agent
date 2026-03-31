@@ -1,11 +1,14 @@
 package com.project.medi_agent.ui
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.project.medi_agent.data.AppDatabase
+import com.project.medi_agent.data.ReminderScheduler
 import com.project.medi_agent.data.network.ApiRepository
+import com.project.medi_agent.data.network.ChatMessageRequest
 import com.project.medi_agent.data.network.ChatStreamChunk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -16,30 +19,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
     private val chatSessionDao = db.chatSessionDao()
     private val chatMessageDao = db.chatMessageDao()
+    private val healthProfileDao = db.healthProfileDao()
     private val apiRepository = ApiRepository(application)
+    private val reminderScheduler = ReminderScheduler(application)
     private val gson = Gson()
+    private val context = application.applicationContext
 
-    // 1. 会话列表
+    // 1. 会话与消息
     val sessions: StateFlow<List<ChatSession>> = chatSessionDao.getAllSessions()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    // 2. 当前会话指针
     private val _currentSessionId = MutableStateFlow<String?>(null)
-
-    // 3. 当前会话对象
     val currentSession: StateFlow<ChatSession?> = _currentSessionId.combine(sessions) { id, list ->
         id?.let { selectedId -> list.find { it.id == selectedId } } ?: list.firstOrNull()
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    // 4. 消息列表
     @OptIn(ExperimentalCoroutinesApi::class)
     val messages: StateFlow<List<ChatMessage>> = currentSession.flatMapLatest { session ->
         if (session == null) flowOf(emptyList()) else chatMessageDao.getMessagesForSession(session.id)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    // 5. 提醒列表
+    // 2. 提醒列表
     val reminders: StateFlow<List<MedicationReminder>> = db.medicationReminderDao().getAllReminders()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    // 3. 待确认的提醒
+    private val _pendingReminder = MutableStateFlow<MedicationReminder?>(null)
+    val pendingReminder = _pendingReminder.asStateFlow()
 
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
@@ -67,13 +73,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // --- 提醒操作 ---
+    fun confirmReminder(reminder: MedicationReminder) {
+        viewModelScope.launch {
+            db.medicationReminderDao().insertReminder(reminder)
+            reminderScheduler.schedule(reminder)
+            _pendingReminder.value = null
+        }
+    }
+
+    fun dismissPendingReminder() {
+        _pendingReminder.value = null
+    }
+
     fun deleteReminder(reminder: MedicationReminder) {
         viewModelScope.launch {
+            reminderScheduler.cancel(reminder)
             db.medicationReminderDao().deleteReminder(reminder)
         }
     }
 
-    // --- 开发者工具：清除所有数据 ---
+    // --- 调试工具 ---
     fun debugClearAllData() {
         viewModelScope.launch {
             db.clearAllTables()
@@ -81,16 +101,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- 开发者工具：注入测试提醒 ---
     fun debugInjectTestReminder() {
         viewModelScope.launch {
-            val testReminder = MedicationReminder(
-                medicineName = "测试维他命 (Debug)",
-                dosage = "1片",
-                time = "09:00"
-            )
+            val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(System.currentTimeMillis() + 65000))
+            val testReminder = MedicationReminder(medicineName = "测试维他命 (Debug)", dosage = "1片", time = time)
             db.medicationReminderDao().insertReminder(testReminder)
+            reminderScheduler.schedule(testReminder)
         }
+    }
+
+    fun debugShowFullscreenReminder() {
+        val intent = Intent(context, ReminderActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("EXTRA_MEDICINE_NAME", "调试药品 (Debug)")
+            putExtra("EXTRA_DOSAGE", "99 粒")
+        }
+        context.startActivity(intent)
     }
 
     fun sendMessage(text: String, imageBase64: String?) {
@@ -99,66 +126,101 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (_isSending.value || (text.isBlank() && imageBase64 == null)) return@launch
             
             _isSending.value = true
-            val currentHistory = messages.value
+            val history = messages.value
 
             val userMsg = ChatMessage(sessionId = session.id, text = text, isUser = true, imageBase64 = imageBase64)
             val userMsgId = chatMessageDao.insertMessage(userMsg)
             val userMsgWithId = userMsg.copy(messageId = userMsgId)
 
-            val aiMsgPlaceholder = ChatMessage(sessionId = session.id, text = "", isUser = false)
-            val aiMsgId = chatMessageDao.insertMessage(aiMsgPlaceholder)
-
-            try {
-                val historyForApi = currentHistory + userMsgWithId
-                var currentAiMsg = aiMsgPlaceholder.copy(messageId = aiMsgId)
-                var fullResponseForTTS = ""
-                var pendingToolCall: Triple<String, String, String>? = null
-
-                apiRepository.chatStream(historyForApi).collect { chunk ->
-                    currentAiMsg = when (chunk) {
-                        is ChatStreamChunk.Thinking -> currentAiMsg.copy(thinkingText = currentAiMsg.thinkingText + chunk.text)
-                        is ChatStreamChunk.Content -> {
-                            fullResponseForTTS += chunk.text
-                            currentAiMsg.copy(text = currentAiMsg.text + chunk.text)
-                        }
-                        is ChatStreamChunk.ToolCall -> {
-                            pendingToolCall = Triple(chunk.id, chunk.name, chunk.arguments)
-                            currentAiMsg.copy(text = currentAiMsg.text + "\n*(正在为您安排提醒...)*")
-                        }
-                        is ChatStreamChunk.Error -> currentAiMsg.copy(text = "系统故障: ${chunk.message}")
-                    }
-                    chatMessageDao.insertMessage(currentAiMsg)
-                }
-                
-                pendingToolCall?.let { (id, name, argsJson) ->
-                    if (name == "add_medication_reminder") {
-                        handleToolAddReminder(argsJson)
-                    }
-                }
-                
-                if (fullResponseForTTS.isNotBlank()) _ttsEvent.emit(fullResponseForTTS)
-                updateSessionTitle(session, text)
-            } catch (e: Exception) {
-                chatMessageDao.insertMessage(aiMsgPlaceholder.copy(messageId = aiMsgId, text = "故障: ${e.message}"))
-            } finally {
-                _isSending.value = false
-            }
+            runAgentLoop(session, history + userMsgWithId)
         }
     }
 
-    private fun handleToolAddReminder(argsJson: String) {
-        viewModelScope.launch {
-            try {
-                val args = gson.fromJson(argsJson, Map::class.java)
-                val name = args["medicine_name"]?.toString() ?: "未知药品"
-                val dosage = args["dosage"]?.toString() ?: ""
-                val time = args["time"]?.toString() ?: ""
+    private suspend fun runAgentLoop(session: ChatSession, history: List<ChatMessage>) {
+        val toolOutputs = mutableListOf<ChatMessageRequest>()
+        var aiMsgId: Long? = null
+        var fullResponseForTTS = ""
 
-                val reminder = MedicationReminder(medicineName = name, dosage = dosage, time = time)
-                db.medicationReminderDao().insertReminder(reminder)
-            } catch (e: Exception) {
-                e.printStackTrace()
+        var streamFlow = apiRepository.chatStream(history, emptyList())
+        
+        var loopCount = 0
+        while (loopCount < 3) {
+            loopCount++
+            var currentToolCall: Triple<String, String, String>? = null
+            
+            if (aiMsgId == null) {
+                val placeholder = ChatMessage(sessionId = session.id, text = "", isUser = false)
+                aiMsgId = chatMessageDao.insertMessage(placeholder)
             }
+
+            var currentAiMsg = ChatMessage(messageId = aiMsgId, sessionId = session.id, text = "", isUser = false)
+
+            streamFlow.collect { chunk ->
+                currentAiMsg = when (chunk) {
+                    is ChatStreamChunk.Thinking -> currentAiMsg.copy(thinkingText = currentAiMsg.thinkingText + chunk.text)
+                    is ChatStreamChunk.Content -> {
+                        fullResponseForTTS += chunk.text
+                        currentAiMsg.copy(text = currentAiMsg.text + chunk.text)
+                    }
+                    is ChatStreamChunk.ToolCall -> {
+                        currentToolCall = Triple(chunk.id, chunk.name, chunk.arguments)
+                        currentAiMsg.copy(text = currentAiMsg.text + "\n*(正在查询/同步...)*")
+                    }
+                    is ChatStreamChunk.Error -> currentAiMsg.copy(text = "系统故障: ${chunk.message}")
+                }
+                chatMessageDao.insertMessage(currentAiMsg)
+            }
+
+            if (currentToolCall != null) {
+                val (id, name, args) = currentToolCall!!
+                val output = executeTool(name, args)
+                toolOutputs.add(ChatMessageRequest(role = "tool", toolCallId = id, content = output))
+                streamFlow = apiRepository.chatStream(history, toolOutputs)
+            } else {
+                break
+            }
+        }
+
+        if (fullResponseForTTS.isNotBlank()) _ttsEvent.emit(fullResponseForTTS)
+        updateSessionTitle(session, history.last().text)
+        _isSending.value = false
+    }
+
+    private suspend fun executeTool(name: String, argsJson: String): String {
+        return try {
+            val args = gson.fromJson(argsJson, Map::class.java)
+            when (name) {
+                "add_medication_reminder" -> {
+                    val reminder = MedicationReminder(
+                        medicineName = args["medicine_name"]?.toString() ?: "未知",
+                        dosage = args["dosage"]?.toString() ?: "",
+                        time = args["time"]?.toString() ?: ""
+                    )
+                    _pendingReminder.value = reminder
+                    "已触发用户确认弹窗"
+                }
+                "get_health_profile" -> {
+                    val key = args["key"]?.toString() ?: "all"
+                    if (key == "all") {
+                        val all = healthProfileDao.getAllProfiles()
+                        if (all.isEmpty()) "暂无健康档案记录" else all.joinToString { "${it.key}: ${it.content}" }
+                    } else {
+                        val profile = healthProfileDao.getProfileByKey(key)
+                        profile?.content ?: "暂无此项记录"
+                    }
+                }
+                "update_health_profile" -> {
+                    val key = args["key"]?.toString() ?: ""
+                    val content = args["content"]?.toString() ?: ""
+                    if (key.isNotBlank()) {
+                        healthProfileDao.insertProfile(HealthProfile(key, content))
+                        "已成功更新健康档案: $key"
+                    } else "更新失败: 键名为空"
+                }
+                else -> "未知工具: $name"
+            }
+        } catch (e: Exception) {
+            "工具执行出错: ${e.message}"
         }
     }
 
