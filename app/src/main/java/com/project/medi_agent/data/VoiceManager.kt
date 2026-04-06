@@ -1,3 +1,4 @@
+@file:Suppress("UNUSED_PARAMETER", "UNUSED_VALUE", "DEPRECATION")
 package com.project.medi_agent.data
 
 import android.content.Context
@@ -12,16 +13,14 @@ import android.util.Log
 import android.widget.Toast
 import java.util.Locale
 
+@Suppress("UNUSED_PARAMETER", "UNUSED_VALUE")
 class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
 
     private var tts: TextToSpeech? = null
     @Volatile
     private var isTtsInitialized = false
     private var speechRecognizer: SpeechRecognizer? = null
-    @Volatile
-    private var isMuted: Boolean = false
-    private var speechRate: Float = 1.0f
-    private var speechPitch: Float = 1.0f
+    // TTS 控制（保持简单接口）：只提供 speak/stop/destroy
 
     init {
         // 使用 ApplicationContext 防止内存泄漏，并确保生命周期更稳健
@@ -56,19 +55,13 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
             return
         }
 
-        // respect manual mute
-        if (isMuted) {
-            onComplete()
-            return
-        }
-
         if (isTtsInitialized && tts != null) {
             Log.d("VoiceManager", "正在播报: ${cleanText.take(10)}...")
             
             val params = Bundle()
             params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "MediAgentMsg")
             
-            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            tts?.setOnUtteranceProgressListener(@Suppress("DEPRECATION") object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     Log.d("VoiceManager", "播放开始")
                 }
@@ -76,14 +69,14 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
                     Log.d("VoiceManager", "播放完成")
                     onComplete()
                 }
+                // 实现 onError 方法以满足抽象基类的要求并在出错时回调 onComplete
+                @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 override fun onError(utteranceId: String?) {
-                    Log.e("VoiceManager", "播放出错")
+                    Log.e("VoiceManager", "播放出错: $utteranceId")
                     onComplete()
                 }
             })
             
-            tts?.setSpeechRate(speechRate)
-            tts?.setPitch(speechPitch)
             val result = tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, "MediAgentMsg")
             if (result == TextToSpeech.ERROR) {
                 Log.e("VoiceManager", "调用 speak 方法直接返回错误")
@@ -99,27 +92,7 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
     fun stopSpeaking() {
         tts?.stop()
     }
-
-    fun setMuted(muted: Boolean) {
-        isMuted = muted
-        if (muted) stopSpeaking()
-    }
-
-    fun isMuted(): Boolean = isMuted
-
-    fun setRate(rate: Float) {
-        speechRate = rate.coerceIn(0.5f, 2.0f)
-        tts?.setSpeechRate(speechRate)
-    }
-
-    fun setPitch(pitch: Float) {
-        speechPitch = pitch.coerceIn(0.5f, 2.0f)
-        tts?.setPitch(speechPitch)
-    }
-
-    fun getRate(): Float = speechRate
-
-    fun getPitch(): Float = speechPitch
+    
 
     // --- STT (语音转文字) ---
     fun startListening(onResult: (String) -> Unit, onError: (String) -> Unit, onFinished: () -> Unit) {
@@ -136,7 +109,9 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onError(error: Int) {
-                if (error != 5) Log.e("VoiceManager", "STT 错误: $error")
+                val msg = "STT 错误: $error"
+                if (error != 5) Log.e("VoiceManager", msg)
+                onError(msg)
                 onFinished()
             }
             override fun onResults(results: Bundle?) {

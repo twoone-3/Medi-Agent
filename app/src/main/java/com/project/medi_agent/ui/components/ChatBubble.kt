@@ -1,3 +1,4 @@
+@file:Suppress("UNUSED_VALUE")
 package com.project.medi_agent.ui.components
 
 import android.graphics.BitmapFactory
@@ -29,13 +30,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.project.medi_agent.ui.ChatMessage
 
+@Suppress("UNUSED_VALUE")
 @Composable
 fun ChatBubble(
-    message: ChatMessage, 
+    message: ChatMessage,
+    modifier: Modifier = Modifier,
     isPlaying: Boolean = false,
     onPlayAudio: (String) -> Unit = {},
-    onStopAudio: () -> Unit = {},
-    modifier: Modifier = Modifier
+    onStopAudio: () -> Unit = {}
 ) {
     val isUser = message.isUser
     val bubbleColor = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
@@ -51,7 +53,7 @@ fun ChatBubble(
             try {
                 val bytes = Base64.decode(it, Base64.DEFAULT)
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            } catch (e: Exception) { null }
+            } catch (_: Exception) { null }
         }
     }
 
@@ -150,7 +152,7 @@ fun ChatBubble(
                 modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!isUser && message.text.isNotEmpty()) {
+                    if (!isUser && message.text.isNotEmpty()) {
                     IconButton(
                         onClick = {
                             if (isPlaying) onStopAudio() else onPlayAudio(message.text)
@@ -165,6 +167,11 @@ fun ChatBubble(
                         )
                     }
                     Spacer(Modifier.width(if (isSeniorMode) 12.dp else 8.dp))
+                    // 语音状态指示
+                    if (isPlaying) {
+                        Text("播放中", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(if (isSeniorMode) 12.dp else 8.dp))
+                    }
                 }
                 
                 Text(

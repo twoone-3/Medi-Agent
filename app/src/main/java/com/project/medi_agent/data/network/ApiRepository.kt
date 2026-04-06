@@ -184,7 +184,7 @@ class ApiRepository(private val context: Context) {
                             }
                             toolDelta.function?.arguments?.let { buffer.third.append(it) }
                         }
-                    } catch (e: Exception) {}
+                    } catch (_: Exception) {}
                 }
             }
             toolCallBuffers.values.forEach { (id, name, args) ->
@@ -201,7 +201,7 @@ class ApiRepository(private val context: Context) {
             val text = stream.bufferedReader().use { it.readText() }
             val arr = gson.fromJson(text, Array<KnowledgeItem>::class.java)
             localKbCache = arr?.toList() ?: emptyList()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             localKbCache = emptyList()
         }
     }

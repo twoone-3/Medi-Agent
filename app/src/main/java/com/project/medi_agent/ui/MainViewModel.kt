@@ -23,7 +23,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val apiRepository = ApiRepository(application)
     private val reminderScheduler = ReminderScheduler(application)
     private val gson = Gson()
-    private val context = application.applicationContext
 
     // 1. 会话与消息
     val sessions: StateFlow<List<ChatSession>> = chatSessionDao.getAllSessions()
@@ -77,7 +76,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val list = healthProfileDao.getAllProfiles()
                 _healthProfiles.value = list
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 _healthProfiles.value = emptyList()
             }
         }
@@ -88,7 +87,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 healthProfileDao.insertProfile(HealthProfile(key = key, content = content))
                 loadHealthProfiles()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // ignore or log
             }
         }
@@ -99,7 +98,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 healthProfileDao.deleteProfile(key)
                 loadHealthProfiles()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // ignore
             }
         }
@@ -129,7 +128,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun confirmReminder(reminder: MedicationReminder) {
         viewModelScope.launch {
             db.medicationReminderDao().insertReminder(reminder)
-            reminderScheduler.schedule(reminder)
+            try {
+                reminderScheduler.schedule(reminder)
+            } catch (_: SecurityException) {
+                // 忽略可能的 SecurityException，避免在某些设备上崩溃
+            }
             _pendingReminder.value = null
         }
     }
@@ -146,6 +149,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- 调试工具 ---
+    @Suppress("unused")
     fun debugClearAllData() {
         viewModelScope.launch {
             db.clearAllTables()
@@ -159,17 +163,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .format(java.util.Date(System.currentTimeMillis() + 65000))
             val testReminder = MedicationReminder(medicineName = "测试维他命 (Debug)", dosage = "1片", time = time)
             db.medicationReminderDao().insertReminder(testReminder)
-            reminderScheduler.schedule(testReminder)
+            try {
+                reminderScheduler.schedule(testReminder)
+            } catch (_: SecurityException) {
+                // 某些设备/权限下可能抛出 SecurityException，忽略以避免崩溃
+            }
         }
     }
 
     fun debugShowFullscreenReminder() {
-        val intent = Intent(context, ReminderActivity::class.java).apply {
+        val intent = Intent(getApplication(), ReminderActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("EXTRA_MEDICINE_NAME", "调试药品 (Debug)")
             putExtra("EXTRA_DOSAGE", "99 粒")
         }
-        context.startActivity(intent)
+        getApplication<Application>().startActivity(intent)
     }
 
     // 记录服药日志：当用户在提醒界面点击“我已吃完”时调用
@@ -178,7 +186,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val log = MedicationLog(medicineName = medicineName, status = status)
                 db.medicationLogDao().insertLog(log)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // 忽略插入错误，避免影响主流程；可扩展为上报或显示错误
             }
         }
@@ -240,10 +248,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             if (currentToolCall != null) {
-                val (id, name, args) = currentToolCall!!
-                val output = executeTool(name, args)
-                toolOutputs.add(ChatMessageRequest(role = "tool", toolCallId = id, content = output))
-                streamFlow = apiRepository.chatStream(history, toolOutputs)
+                currentToolCall.let { (id, name, args) ->
+                    val output = executeTool(name, args)
+                    toolOutputs.add(ChatMessageRequest(role = "tool", toolCallId = id, content = output))
+                    streamFlow = apiRepository.chatStream(history, toolOutputs)
+                }
             } else {
                 break
             }
@@ -289,8 +298,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 else -> "未知工具: $name"
             }
-        } catch (e: Exception) {
-            "工具执行出错: ${e.message}"
+        } catch (_: Exception) {
+            "工具执行出错"
         }
     }
 

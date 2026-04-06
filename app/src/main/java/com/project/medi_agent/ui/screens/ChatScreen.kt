@@ -1,3 +1,4 @@
+@file:Suppress("UNUSED_VALUE")
 package com.project.medi_agent.ui.screens
 
 import android.Manifest
@@ -27,10 +28,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Slider
+// TTS controls simplified; per-message play/pause used
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -91,11 +89,6 @@ fun ChatScreen(
             voiceManager.speak(cleanText, onComplete = { playingMessageId = -1L })
         }
     }
-
-    // TTS 控制状态
-    var ttsMuted by remember { mutableStateOf(voiceManager.isMuted()) }
-    var showTtsSpeedDialog by remember { mutableStateOf(false) }
-    var ttsRate by remember { mutableStateOf(voiceManager.getRate()) }
 
     // 网络错误友好提示
     val networkError by viewModel.networkError.collectAsState()
@@ -188,18 +181,7 @@ fun ChatScreen(
     Column(modifier = modifier.fillMaxSize()) {
         AppTopBar(title = session.title, onMenuClick = { openDrawer?.invoke() })
 
-        // TTS 控制区域（静音 / 速度）
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.End) {
-            IconButton(onClick = {
-                ttsMuted = !ttsMuted
-                voiceManager.setMuted(ttsMuted)
-            }) {
-                Icon(imageVector = if (ttsMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, contentDescription = "TTS 静音切换")
-            }
-            IconButton(onClick = { showTtsSpeedDialog = true }) {
-                Icon(imageVector = Icons.Default.Settings, contentDescription = "语速调整")
-            }
-        }
+        // （已移除全局 TTS 静音与语速控制，使用每条消息的播放/暂停控制）
 
         LazyColumn(
             modifier = Modifier
@@ -382,10 +364,9 @@ fun ChatScreen(
             onDismissRequest = { showSheet = false },
             sheetState = rememberModalBottomSheetState()
         ) {
+            val sheetRowModifier = Modifier.fillMaxWidth().padding(bottom = if (isSeniorMode) 64.dp else 48.dp, top = 16.dp)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = if (isSeniorMode) 64.dp else 48.dp, top = 16.dp),
+                modifier = sheetRowModifier,
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 AttachmentItem(Icons.Default.PhotoCamera, "拍照", isSeniorMode) {
@@ -409,25 +390,7 @@ fun ChatScreen(
         }
     }
 
-    if (showTtsSpeedDialog) {
-        AlertDialog(
-            onDismissRequest = { showTtsSpeedDialog = false },
-            title = { Text("调整语速") },
-            text = {
-                Column {
-                    Text("当前语速：${String.format("%.2f", ttsRate)}x")
-                    Spacer(Modifier.height(8.dp))
-                    Slider(value = ttsRate, onValueChange = {
-                        ttsRate = it
-                        voiceManager.setRate(it)
-                    }, valueRange = 0.5f..1.8f, steps = 6)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showTtsSpeedDialog = false }) { Text("确定") }
-            }
-        )
-    }
+    // no global TTS speed dialog: per-message play/pause controls are used
 }
 
 @Composable
