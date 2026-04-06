@@ -4,7 +4,6 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
@@ -51,13 +49,8 @@ fun SettingsScreen(
     AnimatedContent(
         targetState = currentSubScreen,
         transitionSpec = {
-            if (targetState == "model") {
-                (slideInHorizontally(animationSpec = tween(300)) { it } + fadeIn(animationSpec = tween(300)))
-                    .togetherWith(slideOutHorizontally(animationSpec = tween(300)) { -it / 3 } + fadeOut(animationSpec = tween(300)))
-            } else {
-                (slideInHorizontally(animationSpec = tween(300)) { -it } + fadeIn(animationSpec = tween(300)))
-                    .togetherWith(slideOutHorizontally(animationSpec = tween(300)) { it / 3 } + fadeOut(animationSpec = tween(300)))
-            }.using(SizeTransform(clip = false))
+            // use simple fade in/out (MD3 default fade)
+            fadeIn().togetherWith(fadeOut()).using(SizeTransform(clip = false))
         },
         label = "SettingsTransition"
     ) { subScreen ->
@@ -66,23 +59,17 @@ fun SettingsScreen(
                 onBack = { currentSubScreen = "main" },
                 viewModel = viewModel
             )
-        } else if (subScreen == "health") {
-            HealthProfileSubScreen(
-                onBack = { currentSubScreen = "main" },
-                viewModel = viewModel
-            )
         } else {
             MainSettingsSubScreen(
                 onMenuClick = onMenuClick,
-                onNavigateToModel = { currentSubScreen = "model" },
-                onNavigateToHealth = { currentSubScreen = "health" }
+                onNavigateToModel = { currentSubScreen = "model" }
             )
         }
     }
 }
 
 @Composable
-fun MainSettingsSubScreen(onMenuClick: () -> Unit, onNavigateToModel: () -> Unit, onNavigateToHealth: () -> Unit) {
+fun MainSettingsSubScreen(onMenuClick: () -> Unit, onNavigateToModel: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("mediagent_prefs", Context.MODE_PRIVATE) }
     
@@ -162,14 +149,7 @@ fun MainSettingsSubScreen(onMenuClick: () -> Unit, onNavigateToModel: () -> Unit
                 onClick = onNavigateToModel
             )
 
-            SettingsClickItem(
-                icon = Icons.Default.MedicalServices,
-                title = "我的健康档案",
-                subtitle = "查看与编辑 Agent 记住的健康信息",
-                isSeniorMode = isSeniorMode,
-                showArrow = true,
-                onClick = onNavigateToHealth
-            )
+            // Health profile removed from Settings menu
         }
     }
 }

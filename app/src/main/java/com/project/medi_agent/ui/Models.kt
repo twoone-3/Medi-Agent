@@ -51,5 +51,5 @@ data class MedicationLog(
 )
 
 enum class Screen {
-    Chat, Settings
+    Chat, Settings, HealthProfile
 }

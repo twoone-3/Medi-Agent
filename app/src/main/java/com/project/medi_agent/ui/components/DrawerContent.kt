@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import android.util.Log
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -147,6 +148,15 @@ fun AppDrawer(
             selected = selected == Screen.Settings,
             onClick = { onDestinationClick(Screen.Settings) },
             icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(if (isSeniorMode) 32.dp else 24.dp)) },
+            shape = RoundedCornerShape(if (isSeniorMode) 16.dp else 8.dp)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        // Health Profile Item (use medical kit icon)
+        NavigationDrawerItem(
+            label = { Text("我的健康档案", style = if (isSeniorMode) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge) },
+            selected = selected == Screen.HealthProfile,
+            onClick = { onDestinationClick(Screen.HealthProfile) },
+            icon = { Icon(Icons.Default.MedicalServices, contentDescription = null, modifier = Modifier.size(if (isSeniorMode) 32.dp else 24.dp)) },
             shape = RoundedCornerShape(if (isSeniorMode) 16.dp else 8.dp)
         )
     }

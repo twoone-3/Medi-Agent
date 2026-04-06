@@ -2,7 +2,6 @@ package com.project.medi_agent.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -19,15 +18,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
+import androidx.compose.ui.Modifier as ComposeModifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.project.medi_agent.ui.MainViewModel
 import com.project.medi_agent.ui.Screen
 import com.project.medi_agent.ui.components.AppDrawer
+import com.project.medi_agent.ui.screens.HealthProfileSubScreen
 import kotlinx.coroutines.launch
 
 @Composable
-fun AppContent(modifier: Modifier = Modifier) {
+fun AppContent(modifier: ComposeModifier = ComposeModifier) {
     val viewModel: MainViewModel = viewModel()
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -43,6 +43,10 @@ fun AppContent(modifier: Modifier = Modifier) {
     }
 
     BackHandler(enabled = !drawerState.isOpen && currentScreen == Screen.Settings) {
+        currentScreen = Screen.Chat
+    }
+
+    BackHandler(enabled = !drawerState.isOpen && currentScreen == Screen.HealthProfile) {
         currentScreen = Screen.Chat
     }
 
@@ -82,7 +86,8 @@ fun AppContent(modifier: Modifier = Modifier) {
         AnimatedContent(
             targetState = currentScreen,
             transitionSpec = {
-                fadeIn(animationSpec = tween(300)).togetherWith(fadeOut(animationSpec = tween(300)))
+                // use MD3 default fade transitions
+                fadeIn().togetherWith(fadeOut())
             },
             label = "ScreenTransition"
         ) { targetScreen ->
@@ -91,7 +96,7 @@ fun AppContent(modifier: Modifier = Modifier) {
                     Screen.Chat -> {
                         if (currentSession != null) {
                             ChatScreen(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = ComposeModifier.fillMaxSize(),
                                 session = currentSession!!,
                                 openDrawer = { scope.launch { drawerState.open() } }
                             )
@@ -100,6 +105,9 @@ fun AppContent(modifier: Modifier = Modifier) {
                     Screen.Settings -> SettingsScreen(
                         onMenuClick = { scope.launch { drawerState.open() } }
                     )
+                    Screen.HealthProfile -> {
+                        HealthProfileSubScreen(onBack = { currentScreen = Screen.Chat })
+                    }
                 }
             }
         }

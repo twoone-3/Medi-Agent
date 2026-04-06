@@ -69,10 +69,16 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
                     Log.d("VoiceManager", "播放完成")
                     onComplete()
                 }
-                // 实现 onError 方法以满足抽象基类的要求并在出错时回调 onComplete
+                // 兼容不同 API 的 onError 重载：实现两个签名以避免抽象方法未实现的问题
                 @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
                 override fun onError(utteranceId: String?) {
-                    Log.e("VoiceManager", "播放出错: $utteranceId")
+                    Log.e("VoiceManager", "播放出错 (legacy): $utteranceId")
+                    onComplete()
+                }
+
+                // 新的 onError 签名（带错误��），部分 SDK 要求实现此方法
+                override fun onError(utteranceId: String?, errorCode: Int) {
+                    Log.e("VoiceManager", "播放出错 (code=$errorCode): $utteranceId")
                     onComplete()
                 }
             })
