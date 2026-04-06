@@ -53,6 +53,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _ttsEvent = MutableSharedFlow<String>()
     val ttsEvent = _ttsEvent.asSharedFlow()
 
+    // 网络/服务错误提示（用于在 UI 中显示大字号温情提示）
+    private val _networkError = MutableStateFlow<String?>(null)
+    val networkError = _networkError.asStateFlow()
+
+    fun clearNetworkError() {
+        _networkError.value = null
+    }
+
+    // Health profile state for UI
+    private val _healthProfiles = MutableStateFlow<List<HealthProfile>>(emptyList())
+    val healthProfiles: StateFlow<List<HealthProfile>> = _healthProfiles.asStateFlow()
+
+    init {
+        // load initial health profiles
+        viewModelScope.launch {
+            loadHealthProfiles()
+        }
+    }
+
+    fun loadHealthProfiles() {
+        viewModelScope.launch {
+            try {
+                val list = healthProfileDao.getAllProfiles()
+                _healthProfiles.value = list
+            } catch (e: Exception) {
+                _healthProfiles.value = emptyList()
+            }
+        }
+    }
+
+    fun upsertHealthProfile(key: String, content: String) {
+        viewModelScope.launch {
+            try {
+                healthProfileDao.insertProfile(HealthProfile(key = key, content = content))
+                loadHealthProfiles()
+            } catch (e: Exception) {
+                // ignore or log
+            }
+        }
+    }
+
+    fun deleteHealthProfile(key: String) {
+        viewModelScope.launch {
+            try {
+                healthProfileDao.deleteProfile(key)
+                loadHealthProfiles()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
     fun selectSession(session: ChatSession) {
         _currentSessionId.value = session.id
     }
@@ -120,6 +172,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         context.startActivity(intent)
     }
 
+    // 记录服药日志：当用户在提醒界面点击“我已吃完”时调用
+    fun recordMedicationTaken(medicineName: String, status: String = "TAKEN") {
+        viewModelScope.launch {
+            try {
+                val log = MedicationLog(medicineName = medicineName, status = status)
+                db.medicationLogDao().insertLog(log)
+            } catch (e: Exception) {
+                // 忽略插入错误，避免影响主流程；可扩展为上报或显示错误
+            }
+        }
+    }
+
     fun sendMessage(text: String, imageBase64: String?) {
         viewModelScope.launch {
             val session = currentSession.value ?: return@launch
@@ -166,7 +230,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         currentToolCall = Triple(chunk.id, chunk.name, chunk.arguments)
                         currentAiMsg.copy(text = currentAiMsg.text + "\n*(正在查询/同步...)*")
                     }
-                    is ChatStreamChunk.Error -> currentAiMsg.copy(text = "系统故障: ${chunk.message}")
+                        is ChatStreamChunk.Error -> {
+                            // 同时把错误信息提升为 UI 层的友好提示
+                            _networkError.value = chunk.message
+                            currentAiMsg.copy(text = "系统故障: ${chunk.message}")
+                        }
                 }
                 chatMessageDao.insertMessage(currentAiMsg)
             }
@@ -214,6 +282,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val content = args["content"]?.toString() ?: ""
                     if (key.isNotBlank()) {
                         healthProfileDao.insertProfile(HealthProfile(key, content))
+                        // 同步更新 UI 状态
+                        loadHealthProfiles()
                         "已成功更新健康档案: $key"
                     } else "更新失败: 键名为空"
                 }

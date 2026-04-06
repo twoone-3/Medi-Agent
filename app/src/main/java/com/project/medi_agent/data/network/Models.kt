@@ -64,6 +64,14 @@ data class ChatCompletionResponse(
     val choices: List<ChatChoice>
 )
 
+// 本地医学知识库条目
+data class KnowledgeItem(
+    val id: String = "",
+    val title: String = "",
+    val tags: List<String> = emptyList(),
+    val content: String = ""
+)
+
 data class ChatChoice(
     val message: ChatMessageResponse?,
     val delta: ChatDelta? = null,

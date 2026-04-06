@@ -7,6 +7,8 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.viewmodel.compose.viewModel
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -33,6 +35,7 @@ class ReminderActivity : ComponentActivity() {
 
         setContent {
             MediAgentTheme(isSeniorMode = true) { // 强制开启大字号模式
+                val viewModel: MainViewModel = viewModel()
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.errorContainer
@@ -40,7 +43,12 @@ class ReminderActivity : ComponentActivity() {
                     ReminderContent(
                         medicineName = medicineName,
                         dosage = dosage,
-                        onConfirm = { finish() }
+                        onConfirm = {
+                            // 记录服药日志
+                            viewModel.recordMedicationTaken(medicineName)
+                            Toast.makeText(this@ReminderActivity, "已记录服药：$medicineName", Toast.LENGTH_SHORT).show()
+                            finish()
+                        }
                     )
                 }
             }

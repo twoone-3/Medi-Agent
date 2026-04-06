@@ -27,6 +27,10 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Slider
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -87,6 +91,14 @@ fun ChatScreen(
             voiceManager.speak(cleanText, onComplete = { playingMessageId = -1L })
         }
     }
+
+    // TTS 控制状态
+    var ttsMuted by remember { mutableStateOf(voiceManager.isMuted()) }
+    var showTtsSpeedDialog by remember { mutableStateOf(false) }
+    var ttsRate by remember { mutableStateOf(voiceManager.getRate()) }
+
+    // 网络错误友好提示
+    val networkError by viewModel.networkError.collectAsState()
 
     DisposableEffect(Unit) {
         onDispose { voiceManager.destroy() }
@@ -176,6 +188,19 @@ fun ChatScreen(
     Column(modifier = modifier.fillMaxSize()) {
         AppTopBar(title = session.title, onMenuClick = { openDrawer?.invoke() })
 
+        // TTS 控制区域（静音 / 速度）
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.End) {
+            IconButton(onClick = {
+                ttsMuted = !ttsMuted
+                voiceManager.setMuted(ttsMuted)
+            }) {
+                Icon(imageVector = if (ttsMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, contentDescription = "TTS 静音切换")
+            }
+            IconButton(onClick = { showTtsSpeedDialog = true }) {
+                Icon(imageVector = Icons.Default.Settings, contentDescription = "语速调整")
+            }
+        }
+
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
@@ -198,6 +223,23 @@ fun ChatScreen(
                         playingMessageId = -1L
                     }
                 )
+            }
+        }
+
+        // 网络错误覆盖层（大字号、温情提示）
+        networkError?.let { errMsg ->
+            Box(modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.95f)), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                    Text("抱歉，网络出了点小问题，爷爷/奶奶，别着急。", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    Text(errMsg, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onErrorContainer)
+                    Spacer(Modifier.height(20.dp))
+                    Button(onClick = { viewModel.clearNetworkError() }) {
+                        Text("重试")
+                    }
+                }
             }
         }
 
@@ -365,6 +407,26 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    if (showTtsSpeedDialog) {
+        AlertDialog(
+            onDismissRequest = { showTtsSpeedDialog = false },
+            title = { Text("调整语速") },
+            text = {
+                Column {
+                    Text("当前语速：${String.format("%.2f", ttsRate)}x")
+                    Spacer(Modifier.height(8.dp))
+                    Slider(value = ttsRate, onValueChange = {
+                        ttsRate = it
+                        voiceManager.setRate(it)
+                    }, valueRange = 0.5f..1.8f, steps = 6)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTtsSpeedDialog = false }) { Text("确定") }
+            }
+        )
     }
 }
 

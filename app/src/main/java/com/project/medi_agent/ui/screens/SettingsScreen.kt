@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
@@ -65,17 +66,23 @@ fun SettingsScreen(
                 onBack = { currentSubScreen = "main" },
                 viewModel = viewModel
             )
+        } else if (subScreen == "health") {
+            HealthProfileSubScreen(
+                onBack = { currentSubScreen = "main" },
+                viewModel = viewModel
+            )
         } else {
             MainSettingsSubScreen(
                 onMenuClick = onMenuClick,
-                onNavigateToModel = { currentSubScreen = "model" }
+                onNavigateToModel = { currentSubScreen = "model" },
+                onNavigateToHealth = { currentSubScreen = "health" }
             )
         }
     }
 }
 
 @Composable
-fun MainSettingsSubScreen(onMenuClick: () -> Unit, onNavigateToModel: () -> Unit) {
+fun MainSettingsSubScreen(onMenuClick: () -> Unit, onNavigateToModel: () -> Unit, onNavigateToHealth: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("mediagent_prefs", Context.MODE_PRIVATE) }
     
@@ -153,6 +160,15 @@ fun MainSettingsSubScreen(onMenuClick: () -> Unit, onNavigateToModel: () -> Unit
                 isSeniorMode = isSeniorMode,
                 showArrow = true,
                 onClick = onNavigateToModel
+            )
+
+            SettingsClickItem(
+                icon = Icons.Default.MedicalServices,
+                title = "我的健康档案",
+                subtitle = "查看与编辑 Agent 记住的健康信息",
+                isSeniorMode = isSeniorMode,
+                showArrow = true,
+                onClick = onNavigateToHealth
             )
         }
     }

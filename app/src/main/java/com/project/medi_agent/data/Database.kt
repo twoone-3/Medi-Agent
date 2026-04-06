@@ -55,6 +55,9 @@ interface HealthProfileDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProfile(profile: HealthProfile)
+
+    @Query("DELETE FROM health_profile WHERE `key` = :key")
+    suspend fun deleteProfile(key: String)
 }
 
 @Dao

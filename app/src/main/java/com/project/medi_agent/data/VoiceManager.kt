@@ -18,6 +18,10 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
     @Volatile
     private var isTtsInitialized = false
     private var speechRecognizer: SpeechRecognizer? = null
+    @Volatile
+    private var isMuted: Boolean = false
+    private var speechRate: Float = 1.0f
+    private var speechPitch: Float = 1.0f
 
     init {
         // 使用 ApplicationContext 防止内存泄漏，并确保生命周期更稳健
@@ -52,6 +56,12 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
             return
         }
 
+        // respect manual mute
+        if (isMuted) {
+            onComplete()
+            return
+        }
+
         if (isTtsInitialized && tts != null) {
             Log.d("VoiceManager", "正在播报: ${cleanText.take(10)}...")
             
@@ -72,6 +82,8 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
                 }
             })
             
+            tts?.setSpeechRate(speechRate)
+            tts?.setPitch(speechPitch)
             val result = tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, "MediAgentMsg")
             if (result == TextToSpeech.ERROR) {
                 Log.e("VoiceManager", "调用 speak 方法直接返回错误")
@@ -87,6 +99,27 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener {
     fun stopSpeaking() {
         tts?.stop()
     }
+
+    fun setMuted(muted: Boolean) {
+        isMuted = muted
+        if (muted) stopSpeaking()
+    }
+
+    fun isMuted(): Boolean = isMuted
+
+    fun setRate(rate: Float) {
+        speechRate = rate.coerceIn(0.5f, 2.0f)
+        tts?.setSpeechRate(speechRate)
+    }
+
+    fun setPitch(pitch: Float) {
+        speechPitch = pitch.coerceIn(0.5f, 2.0f)
+        tts?.setPitch(speechPitch)
+    }
+
+    fun getRate(): Float = speechRate
+
+    fun getPitch(): Float = speechPitch
 
     // --- STT (语音转文字) ---
     fun startListening(onResult: (String) -> Unit, onError: (String) -> Unit, onFinished: () -> Unit) {
